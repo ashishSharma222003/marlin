@@ -46,12 +46,133 @@
     transition: width 0.08s linear;
     box-shadow: 0 0 8px rgba(46,255,194,0.6);
   }
+
+  /* ---------- response text, shown center-stage while the sphere
+     drifts to the top-right during an answer ---------- */
+  #responseWrap {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    padding: 0 8vw;
+    box-sizing: border-box;
+  }
+  #responseText {
+    max-width: 640px;
+    color: rgba(255,255,255,0.92);
+    font-size: 19px;
+    line-height: 1.65;
+    letter-spacing: 0.01em;
+    text-align: center;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+    text-shadow: 0 2px 24px rgba(0,0,0,0.55);
+  }
+  #responseText.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  #responseText .cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: rgba(255,255,255,0.75);
+    margin-left: 2px;
+    vertical-align: -0.15em;
+    animation: blink 0.9s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---------- chat dock, bottom of page ---------- */
+  #chatDock {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    width: min(640px, 88vw);
+    z-index: 10;
+  }
+  #chatForm {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(18, 20, 28, 0.55);
+    border: 1px solid rgba(255,255,255,0.12);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border-radius: 999px;
+    padding: 8px 8px 8px 20px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+  #chatForm:focus-within {
+    border-color: rgba(111, 216, 255, 0.5);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 0 0 3px rgba(111,216,255,0.08);
+  }
+  #chatInput {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: rgba(255,255,255,0.94);
+    font-size: 14.5px;
+    font-family: inherit;
+    padding: 8px 0;
+  }
+  #chatInput::placeholder { color: rgba(255,255,255,0.38); }
+
+  #chatSend {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, #2effc2, #6fd8ff);
+    color: #05060a;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+  #chatSend:hover:not(:disabled) { transform: scale(1.07); }
+  #chatSend:disabled { opacity: 0.35; cursor: default; }
+  #chatSend svg { width: 16px; height: 16px; }
+
+  #chatStatus {
+    position: fixed;
+    left: 50%;
+    bottom: 78px;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.4);
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  #chatStatus.show { opacity: 1; }
 </style>
 </head>
 <body>
 
 <div id="energyBar"></div>
-<div id="hint">drag to rotate &nbsp;·&nbsp; scroll to zoom &nbsp;·&nbsp; click to trigger a change &nbsp;·&nbsp; space for a tide</div>
+<div id="hint">drag to rotate &nbsp;·&nbsp; scroll to zoom &nbsp;·&nbsp; click to trigger a change &nbsp;·&nbsp; ask a question below</div>
+
+<div id="responseWrap"><div id="responseText"></div></div>
+<div id="chatStatus"></div>
+
+<div id="chatDock">
+  <form id="chatForm" autocomplete="off">
+    <input id="chatInput" type="text" placeholder="Ask something…" maxlength="4000" />
+    <button id="chatSend" type="submit" aria-label="Send">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 12L20 4L13 20L11 13L4 12Z" fill="currentColor"/></svg>
+    </button>
+  </form>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -272,9 +393,10 @@
     camera.position.z = Math.min(Math.max(camera.position.z, MIN_ZOOM), MAX_ZOOM);
   }, { passive: true });
 
-  // ---------- tide: press space to start/stop a bulge orbiting the sphere,
-  // like Earth's tidal bulge staying pointed at the Moon while Earth spins
-  // underneath it ----------
+  // ---------- tide: a bulge orbiting the sphere, like Earth's tidal bulge
+  // staying pointed at the Moon while Earth spins underneath it. Driven
+  // entirely by chat state now (on while a reply is streaming), not by a
+  // standalone keybinding ----------
   let tideOn = false;
   let tideAmt = 0;
   let tideAngle = 0;
@@ -282,12 +404,42 @@
   const tideLocalDir = new THREE.Vector3();
   const invQuat = new THREE.Quaternion();
 
-  window.addEventListener('keydown', e => {
-    if (e.code === 'Space') {
-      e.preventDefault();
-      tideOn = !tideOn;
-    }
-  });
+  // ---------- chat-driven state: "thinking" (normal sim, centered) while
+  // the user is typing/waiting, "answering" (tide + sphere drifts to a
+  // small top-right "logo", center stage clears for the response text)
+  // while a reply streams in ----------
+  let chatState = 'idle'; // idle | thinking | answering
+  const posX = { cur: 0 }, posY = { cur: 0 };
+  const posScale = { cur: 1 };
+
+  function setChatState(state) {
+    chatState = state;
+    tideOn = (state === 'answering');
+  }
+
+  // Dock target is recomputed every frame from the camera's actual visible
+  // frustum at the sphere's depth, so "top-right corner" always means the
+  // real top-right corner of the viewport regardless of window size/aspect
+  // ratio or zoom level — not a fixed world-unit guess. The inset is a
+  // fixed screen-space fraction (of the *smaller* viewport dimension, so it
+  // scales sensibly on both narrow and wide windows) plus the sphere's own
+  // radius at logo scale, so the "logo" always sits fully on-screen with
+  // consistent breathing room instead of clipping on narrow viewports.
+  const SPHERE_RADIUS = 1.6; // matches the IcosahedronGeometry radius above
+  const DOCK_SCALE = 0.16;   // "logo" size relative to full sphere scale
+  const DOCK_INSET_FRAC = 0.1; // corner inset, as a fraction of min(viewWidth, viewHeight)
+
+  function getDockTarget() {
+    const dist = camera.position.z; // sphere sits at z=0, camera looks down -z
+    const viewHeight = 2 * Math.tan((camera.fov * Math.PI / 180) / 2) * dist;
+    const viewWidth = viewHeight * camera.aspect;
+    const inset = Math.min(viewWidth, viewHeight) * DOCK_INSET_FRAC;
+    const logoRadius = SPHERE_RADIUS * DOCK_SCALE;
+    return {
+      x: Math.max(viewWidth / 2 - inset - logoRadius, logoRadius),
+      y: Math.max(viewHeight / 2 - inset - logoRadius, logoRadius),
+    };
+  }
 
   // ---------- click triggers a "pulse": the only thing that changes shape ----------
   let energy = 0;
@@ -347,11 +499,190 @@
     sphere.rotation.y = rotY;
 
     // scale bump ties directly to energy, so it only pulses on a click
-    sphere.scale.setScalar(1 + energy * 0.03);
+    const answering = (chatState === 'answering');
+    const scaleTarget = answering ? DOCK_SCALE : 1;
+    const targetScale = scaleTarget + energy * 0.03 * (answering ? DOCK_SCALE : 1);
+    posScale.cur += (targetScale - posScale.cur) * 0.06;
+    sphere.scale.setScalar(posScale.cur);
+
+    // smoothly drift toward the top-right "logo" position when answering,
+    // and back to center otherwise — same easing both directions so the
+    // transition reads as one continuous, reversible motion. Target is
+    // recomputed from the live camera frustum every frame, so it always
+    // lands in the real top-right corner regardless of window size/aspect
+    // ratio, and re-settles correctly if the window is resized mid-dock.
+    const dock = getDockTarget();
+    const targetX = answering ? dock.x : 0;
+    const targetY = answering ? dock.y : 0;
+    posX.cur += (targetX - posX.cur) * 0.045;
+    posY.cur += (targetY - posY.cur) * 0.045;
+    sphere.position.x = posX.cur;
+    sphere.position.y = posY.cur;
 
     renderer.render(scene, camera);
   }
   animate();
+
+  // ---------- chat wiring ----------
+  const API_BASE = window.MARLIN_API_BASE || 'http://localhost:8000';
+
+  const chatForm = document.getElementById('chatForm');
+  const chatInput = document.getElementById('chatInput');
+  const chatSend = document.getElementById('chatSend');
+  const chatStatus = document.getElementById('chatStatus');
+  const responseText = document.getElementById('responseText');
+
+  let threadId = null;
+  let threadReady = null;
+  let sending = false;
+
+  function ensureThread() {
+    if (threadReady) return threadReady;
+    threadReady = fetch(`${API_BASE}/conversations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '' }),
+    })
+      .then(r => {
+        if (!r.ok) throw new Error(`conversation create failed: ${r.status}`);
+        return r.json();
+      })
+      .then(data => { threadId = data.thread_id; return threadId; })
+      .catch(err => {
+        threadReady = null; // allow retry on next send
+        throw err;
+      });
+    return threadReady;
+  }
+  // warm the conversation up front so the first send doesn't wait on it
+  ensureThread().catch(() => {});
+
+  function setStatus(msg) {
+    chatStatus.textContent = msg;
+    chatStatus.classList.toggle('show', !!msg);
+  }
+
+  function showResponseCursor() {
+    responseText.classList.add('show');
+    responseText.innerHTML = '<span class="cursor"></span>';
+  }
+
+  function appendResponseToken(token) {
+    const cursor = responseText.querySelector('.cursor');
+    const textNode = document.createTextNode(token);
+    if (cursor) {
+      responseText.insertBefore(textNode, cursor);
+    } else {
+      responseText.appendChild(textNode);
+    }
+  }
+
+  function finishResponse() {
+    const cursor = responseText.querySelector('.cursor');
+    if (cursor) cursor.remove();
+  }
+
+  function clearResponse() {
+    responseText.classList.remove('show');
+    responseText.textContent = '';
+  }
+
+  async function sendMessage(message) {
+    if (sending || !message.trim()) return;
+    sending = true;
+    chatSend.disabled = true;
+    hint.classList.add('fade');
+
+    // "thinking": normal simulation, centered, while we wait for the
+    // request to go out and the first tokens to arrive
+    setChatState('thinking');
+    clearResponse();
+    setStatus('thinking…');
+
+    try {
+      const id = await ensureThread();
+
+      const res = await fetch(`${API_BASE}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, thread_id: id }),
+      });
+      if (!res.ok || !res.body) throw new Error(`chat request failed: ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let answering = false;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+
+        // SSE frames are separated by a blank line
+        let frameEnd;
+        while ((frameEnd = buf.indexOf('\n\n')) !== -1) {
+          const frame = buf.slice(0, frameEnd);
+          buf = buf.slice(frameEnd + 2);
+
+          let event = 'message';
+          let data = '';
+          for (const line of frame.split('\n')) {
+            if (line.startsWith('event:')) event = line.slice(6).trim();
+            else if (line.startsWith('data:')) data += line.slice(5).trim();
+          }
+          if (!data) continue;
+
+          let payload;
+          try { payload = JSON.parse(data); } catch { continue; }
+
+          if (event === 'progress') {
+            setStatus(typeof payload.content === 'string' ? payload.content : 'working…');
+          } else if (event === 'token') {
+            if (!answering) {
+              // first token: sphere drifts to the top-right and switches
+              // to its tidal motion, center stage opens up for the reply
+              answering = true;
+              setChatState('answering');
+              setStatus('');
+              showResponseCursor();
+            }
+            appendResponseToken(payload.content || '');
+          } else if (event === 'done') {
+            finishResponse();
+            setStatus('');
+          } else if (event === 'error') {
+            finishResponse();
+            appendResponseToken(`\n\n[error: ${payload.detail || 'something went wrong'}]`);
+            setStatus('');
+          }
+        }
+      }
+    } catch (err) {
+      setStatus('');
+      responseText.classList.add('show');
+      responseText.textContent = `Couldn't reach the assistant (${err.message}). Is the backend running?`;
+      setChatState('answering');
+    } finally {
+      sending = false;
+      chatSend.disabled = false;
+    }
+  }
+
+  chatForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const message = chatInput.value;
+    if (!message.trim() || sending) return;
+    chatInput.value = '';
+    // returning to the input to type again feels like "asking a new
+    // question" — bring the sphere back to center and normal motion
+    setChatState('thinking');
+    sendMessage(message);
+  });
+
+  chatInput.addEventListener('focus', () => {
+    if (chatState === 'answering') setChatState('thinking');
+  });
 })();
 </script>
 </body>

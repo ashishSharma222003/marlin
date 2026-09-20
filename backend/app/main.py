@@ -4,16 +4,22 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.router import api_router
-from app.core.config import get_settings
-from app.db.mongodb import close_mongo_connection, connect_to_mongo
+from app.env import load_env
+
+load_env()  # must run before anything imports/builds the LLM (app.llm)
+
+from app.agent import build_agent, close_agent
+from app.config import get_settings
+from app.endpoints import router
+from app.fact_store import init_fact_store
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect_to_mongo()
+    await init_fact_store()
+    await build_agent()
     yield
-    await close_mongo_connection()
+    await close_agent()
 
 
 def create_app() -> FastAPI:
@@ -33,7 +39,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(api_router)
+    app.include_router(router)
     return app
 
 

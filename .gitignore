@@ -10,3 +10,6 @@ __pycache__/
 # Editors / OS
 .vscode/
 .DS_Store
+
+# Local data (SQLite DB, JSON conversation logs)
+backend/data/

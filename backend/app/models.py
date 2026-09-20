@@ -1,9 +1,9 @@
 """
 Pydantic schemas for chat requests/responses.
 
-These are the shapes the API speaks — kept separate from DB documents
-(see db/documents.py) since the wire format and storage format are allowed
-to evolve independently.
+These are the shapes the API speaks — kept separate from storage formats
+(SQLite checkpoints, the JSON conversation log) since the wire format and
+storage format are allowed to evolve independently.
 """
 from datetime import datetime, timezone
 from enum import Enum
@@ -26,16 +26,9 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None  # omit to start a new conversation
+    model: str | None = None  # e.g. "claude-sonnet-5"; omit to use the default
 
 
 class ChatResponse(BaseModel):
     conversation_id: str
     reply: Message
-
-
-class ConversationSummary(BaseModel):
-    conversation_id: str
-    title: str | None = None
-    created_at: datetime
-    updated_at: datetime
-    message_count: int

@@ -14,50 +14,50 @@ so the checkpointer's connection can be opened/closed alongside the app.
 """
 from contextlib import AsyncExitStack
 
-from langchain_core.tools import tool
+from langchain.tools import tool, ToolRuntime
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 from app.config import get_settings
 from app.fact_store import get_facts, save_fact
 from app.llm import llm
 from app.vector_store import index_for_recall, search_memory
+from app.prompt import SYSTEM_PROMPT
 
-SYSTEM_PROMPT = (
-    "You are Marlin, a helpful personal assistant. Be concise and direct. "
-    "Use `remember_fact` to save structured facts worth recalling later "
-    "(e.g. user preferences), and `index_for_recall` to save free-form "
-    "context for semantic search. Use `get_facts` and `search_memory` to "
-    "recall them when relevant."
-)
+
 
 _exit_stack = AsyncExitStack()
 agent = None
 
 
 @tool
-async def remember_fact(conversation_id: str, key: str, value: str) -> str:
+async def remember_fact(conversation_id: str, key: str, value: str, runtime: ToolRuntime) -> str:
     """Save a structured fact (key/value) worth recalling later, e.g. a user preference."""
+    runtime.stream_writer(f"Saving fact: {key}={value}")
     await save_fact(conversation_id, key, value)
+    runtime.stream_writer(f"Saved fact: {key}={value}")
     return f"Saved fact: {key}={value}"
 
 
 @tool
-async def recall_facts(conversation_id: str) -> list[dict[str, str]]:
+async def recall_facts(conversation_id: str, runtime: ToolRuntime) -> list[dict[str, str]]:
     """Return all structured facts saved for this conversation."""
+    runtime.stream_writer("Recalling saved facts...")
     return await get_facts(conversation_id)
 
 
 @tool
-async def index_for_recall_tool(text: str, conversation_id: str) -> str:
+async def index_for_recall_tool(text: str, conversation_id: str, runtime: ToolRuntime) -> str:
     """Embed and store free-form text for later semantic search via `search_memory`."""
+    runtime.stream_writer("Indexing text for recall...")
     await index_for_recall(text, conversation_id)
     return "Indexed for recall."
 
 
 @tool
-async def search_memory_tool(query: str) -> list[str]:
+async def search_memory_tool(query: str, runtime: ToolRuntime) -> list[str]:
     """Semantically search previously indexed free-form memory."""
+    runtime.stream_writer(f"Searching memory for: {query}")
     return await search_memory(query)
 
 
@@ -70,10 +70,10 @@ async def build_agent():
     checkpointer = await _exit_stack.enter_async_context(
         AsyncSqliteSaver.from_conn_string(get_settings().sqlite_path)
     )
-    agent = create_react_agent(
+    agent = create_agent(
         llm,
         tools=TOOLS,
-        prompt=SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT,
         checkpointer=checkpointer,
     )
     return agent

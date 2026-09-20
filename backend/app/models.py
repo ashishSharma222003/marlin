@@ -25,10 +25,19 @@ class Message(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    conversation_id: str | None = None  # omit to start a new conversation
+    thread_id: str | None = None  # omit to start a new conversation
     model: str | None = None  # e.g. "claude-sonnet-5"; omit to use the default
 
 
 class ChatResponse(BaseModel):
-    conversation_id: str
+    thread_id: str
     reply: Message
+
+
+class CreateConversationRequest(BaseModel):
+    title: str = ""  # optional label for this conversation; empty by default
+
+
+class ConversationResponse(BaseModel):
+    thread_id: str
+    title: str

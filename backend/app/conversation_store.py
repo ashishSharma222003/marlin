@@ -41,6 +41,26 @@ async def create_conversation(thread_id: str, title: str = "") -> None:
         await db.commit()
 
 
+async def list_conversations(limit: int = 20) -> list[dict]:
+    """Most recently created conversations first, up to `limit`."""
+    async with aiosqlite.connect(get_settings().sqlite_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT thread_id, title, created_at FROM conversations "
+            "ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+async def count_conversations() -> int:
+    async with aiosqlite.connect(get_settings().sqlite_path) as db:
+        cursor = await db.execute("SELECT COUNT(*) FROM conversations")
+        (count,) = await cursor.fetchone()
+        return count
+
+
 
 ###json
 
@@ -56,3 +76,15 @@ def _append_to_log(thread_id: str, user_message: str, reply: str) -> None:
     entries.append({"role": Role.user.value, "content": user_message, "created_at": now})
     entries.append({"role": Role.assistant.value, "content": reply, "created_at": now})
     path.write_text(json.dumps(entries, indent=2))
+
+
+def _read_log(thread_id: str, limit: int | None = None) -> list[dict]:
+    """Just role/content per message, for showing conversation history in the
+    frontend. With `limit`, returns only the most recent `limit` messages."""
+    path = _log_path(thread_id)
+    if not path.exists():
+        return []
+    entries = json.loads(path.read_text())
+    if limit is not None:
+        entries = entries[-limit:]
+    return [{"role": entry["role"], "content": entry["content"]} for entry in entries]

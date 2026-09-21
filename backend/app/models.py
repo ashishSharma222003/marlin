@@ -41,3 +41,22 @@ class CreateConversationRequest(BaseModel):
 class ConversationResponse(BaseModel):
     thread_id: str
     title: str
+
+
+class ConversationListItem(BaseModel):
+    thread_id: str
+    title: str
+    created_at: datetime
+
+
+class ConversationListResponse(BaseModel):
+    conversations: list[ConversationListItem]
+
+
+class ConversationCountResponse(BaseModel):
+    count: int
+
+
+class ConversationMessagesResponse(BaseModel):
+    thread_id: str
+    messages: list[Message]

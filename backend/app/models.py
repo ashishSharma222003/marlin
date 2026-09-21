@@ -21,6 +21,7 @@ class Message(BaseModel):
     role: Role
     content: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: dict | None = None  # assistant turns only: token usage, tool calls, model, ...
 
 
 class ChatRequest(BaseModel):
@@ -47,6 +48,7 @@ class ConversationListItem(BaseModel):
     thread_id: str
     title: str
     created_at: datetime
+    updated_at: datetime
 
 
 class ConversationListResponse(BaseModel):
@@ -60,3 +62,7 @@ class ConversationCountResponse(BaseModel):
 class ConversationMessagesResponse(BaseModel):
     thread_id: str
     messages: list[Message]
+
+
+class UpdateConversationTitleRequest(BaseModel):
+    title: str

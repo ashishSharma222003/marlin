@@ -33,6 +33,7 @@
     transition: opacity 0.6s ease;
     text-align: center;
     line-height: 1.6;
+    z-index: 5;
   }
   #hint.fade { opacity: 0; }
 
@@ -47,35 +48,113 @@
     box-shadow: 0 0 8px rgba(46,255,194,0.6);
   }
 
-  /* ---------- response text, shown center-stage while the sphere
-     drifts to the top-right during an answer ---------- */
-  #responseWrap {
+  /* ================= chat: borderless, full-bleed ==================
+     No panel/card. Messages float directly on the 3D scene; only the
+     input row has any visual container. The sphere lives docked top-left
+     once chatting starts, the thread rail lives on the right, and the
+     transcript fills the open space between them, bottom-anchored. */
+  #chatColumn {
     position: fixed;
-    inset: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 min(9vw, 130px) 0 min(7vw, 260px);
+    pointer-events: none;
+    z-index: 10;
+    transition: padding-right 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  /* when the thread rail is open, give the transcript enough right-side
+     room to clear it instead of letting messages run under its edge */
+  #chatColumn.railOpen {
+    padding-right: calc(min(300px, 78vw) + 6vw);
+  }
+
+  /* new-chat lives as an icon button inside the input row itself (see
+     #chatForm below) rather than as a separate top-bar element */
+  #newChatBtn {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
     display: flex;
     align-items: center;
     justify-content: center;
-    pointer-events: none;
-    padding: 0 8vw;
-    box-sizing: border-box;
-  }
-  #responseText {
-    max-width: 640px;
-    color: rgba(255,255,255,0.92);
-    font-size: 19px;
-    line-height: 1.65;
-    letter-spacing: 0.01em;
-    text-align: center;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.5);
+    border-radius: 50%;
+    cursor: pointer;
     opacity: 0;
-    transform: translateY(10px);
-    transition: opacity 0.6s ease, transform 0.6s ease;
-    text-shadow: 0 2px 24px rgba(0,0,0,0.55);
+    pointer-events: none;
+    transform: scale(0.85);
+    transition: opacity 0.25s ease, transform 0.25s ease, color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
   }
-  #responseText.show {
-    opacity: 1;
-    transform: translateY(0);
+  #newChatBtn.show { opacity: 1; pointer-events: auto; transform: scale(1); }
+  #newChatBtn:hover {
+    color: rgba(255,255,255,0.95);
+    border-color: rgba(111,216,255,0.4);
+    background: rgba(111,216,255,0.1);
   }
-  #responseText .cursor {
+  #newChatBtn svg { width: 15px; height: 15px; }
+
+  #messageList {
+    max-height: 62vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px 4px 18px;
+    pointer-events: auto;
+    /* fade the top edge so history scrolls out softly into the scene
+       instead of hard-clipping at the container's edge */
+    mask-image: linear-gradient(to bottom, transparent 0, black 40px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 40px);
+  }
+  #messageList::-webkit-scrollbar { width: 6px; }
+  #messageList::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.12);
+    border-radius: 999px;
+  }
+
+  #emptyState {
+    margin-bottom: 8px;
+    color: rgba(255,255,255,0.32);
+    font-size: 13.5px;
+    line-height: 1.7;
+  }
+
+  .msgRow { display: flex; }
+  .msgRow.user { justify-content: flex-end; }
+  .msgRow.assistant { justify-content: flex-start; }
+
+  .msgBubble {
+    max-width: 62%;
+    font-size: 15px;
+    line-height: 1.6;
+    word-wrap: break-word;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.6);
+  }
+  /* the user's own message keeps a light pill so the two roles stay easy
+     to tell apart at a glance without either one being boxed in. User text
+     is shown as-is (not parsed as markdown), so it keeps literal line
+     breaks/spacing from what was typed. */
+  .msgRow.user .msgBubble {
+    color: rgba(255,255,255,0.96);
+    background: rgba(111,216,255,0.1);
+    border: 1px solid rgba(111,216,255,0.18);
+    border-radius: 14px;
+    padding: 9px 14px;
+    white-space: pre-wrap;
+  }
+  .msgRow.assistant .msgBubble {
+    color: rgba(255,255,255,0.88);
+    padding: 2px 2px;
+    max-width: 74%;
+  }
+  .msgBubble .cursor {
     display: inline-block;
     width: 2px;
     height: 1em;
@@ -86,31 +165,118 @@
   }
   @keyframes blink { 50% { opacity: 0; } }
 
-  /* ---------- chat dock, bottom of page ---------- */
+  /* ---------- markdown rendering, assistant messages only ---------- */
+  .msgBubble.markdown > *:first-child { margin-top: 0; }
+  .msgBubble.markdown > *:last-child { margin-bottom: 0; }
+  .msgBubble.markdown p { margin: 0 0 10px; }
+  .msgBubble.markdown h1,
+  .msgBubble.markdown h2,
+  .msgBubble.markdown h3 {
+    margin: 18px 0 8px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: rgba(255,255,255,0.95);
+  }
+  .msgBubble.markdown h1 { font-size: 1.35em; }
+  .msgBubble.markdown h2 { font-size: 1.18em; }
+  .msgBubble.markdown h3 { font-size: 1.05em; }
+  .msgBubble.markdown ul,
+  .msgBubble.markdown ol {
+    margin: 0 0 10px;
+    padding-left: 1.4em;
+  }
+  .msgBubble.markdown li { margin: 3px 0; }
+  .msgBubble.markdown li > p { margin: 0; }
+  .msgBubble.markdown a {
+    color: #6fd8ff;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .msgBubble.markdown a:hover { color: #9fe6ff; }
+  .msgBubble.markdown strong { color: rgba(255,255,255,0.97); font-weight: 600; }
+  .msgBubble.markdown em { font-style: italic; }
+  .msgBubble.markdown blockquote {
+    margin: 0 0 10px;
+    padding: 2px 14px;
+    border-left: 2px solid rgba(111,216,255,0.35);
+    color: rgba(255,255,255,0.68);
+  }
+  .msgBubble.markdown hr {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.12);
+    margin: 14px 0;
+  }
+  .msgBubble.markdown code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.87em;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    padding: 0.15em 0.4em;
+  }
+  .msgBubble.markdown pre {
+    margin: 0 0 10px;
+    padding: 12px 14px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    overflow-x: auto;
+  }
+  .msgBubble.markdown pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.85em;
+    line-height: 1.55;
+    color: rgba(210,235,255,0.92);
+  }
+  .msgBubble.markdown table {
+    border-collapse: collapse;
+    margin: 0 0 10px;
+    font-size: 0.92em;
+  }
+  .msgBubble.markdown th,
+  .msgBubble.markdown td {
+    border: 1px solid rgba(255,255,255,0.12);
+    padding: 5px 10px;
+    text-align: left;
+  }
+  .msgBubble.markdown th { color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.04); }
+  .msgBubble.markdown img { max-width: 100%; border-radius: 8px; }
+
+  #chatStatus {
+    padding: 0 4px;
+    color: rgba(255,255,255,0.4);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    height: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, height 0.3s ease;
+  }
+  #chatStatus.show { opacity: 1; height: 22px; }
+
   #chatDock {
-    position: fixed;
-    left: 50%;
-    bottom: 22px;
-    transform: translateX(-50%);
-    width: min(640px, 88vw);
-    z-index: 10;
+    pointer-events: auto;
+    padding: 10px 4px 30px;
   }
   #chatForm {
     display: flex;
     align-items: center;
     gap: 8px;
-    background: rgba(18, 20, 28, 0.55);
+    background: rgba(16, 18, 24, 0.6);
     border: 1px solid rgba(255,255,255,0.12);
-    backdrop-filter: blur(18px) saturate(140%);
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
     border-radius: 999px;
-    padding: 8px 8px 8px 20px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    padding: 8px 8px 8px 18px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
   }
   #chatForm:focus-within {
-    border-color: rgba(111, 216, 255, 0.5);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 0 0 3px rgba(111,216,255,0.08);
+    border-color: rgba(111, 216, 255, 0.45);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 0 0 3px rgba(111,216,255,0.08);
   }
   #chatInput {
     flex: 1;
@@ -118,16 +284,16 @@
     border: none;
     outline: none;
     color: rgba(255,255,255,0.94);
-    font-size: 14.5px;
+    font-size: 14px;
     font-family: inherit;
     padding: 8px 0;
   }
-  #chatInput::placeholder { color: rgba(255,255,255,0.38); }
+  #chatInput::placeholder { color: rgba(255,255,255,0.34); }
 
   #chatSend {
     flex: 0 0 auto;
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     border: none;
     background: linear-gradient(135deg, #2effc2, #6fd8ff);
@@ -138,23 +304,170 @@
     justify-content: center;
     transition: transform 0.15s ease, opacity 0.15s ease;
   }
-  #chatSend:hover:not(:disabled) { transform: scale(1.07); }
+  #chatSend:hover:not(:disabled) { transform: scale(1.06); }
   #chatSend:disabled { opacity: 0.35; cursor: default; }
-  #chatSend svg { width: 16px; height: 16px; }
+  #chatSend svg { width: 15px; height: 15px; }
 
-  #chatStatus {
+  /* ================= thread rail: angled/trapezoidal panel, right side ================ */
+  #threadRailToggle {
     position: fixed;
-    left: 50%;
-    bottom: 78px;
-    transform: translateX(-50%);
-    color: rgba(255,255,255,0.4);
-    font-size: 12px;
-    letter-spacing: 0.03em;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.4s ease;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 11;
+    background: rgba(18, 20, 28, 0.6);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-right: none;
+    color: rgba(255,255,255,0.55);
+    padding: 14px 10px;
+    border-radius: 12px 0 0 12px;
+    cursor: pointer;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    transition: color 0.2s ease, background 0.2s ease;
   }
-  #chatStatus.show { opacity: 1; }
+  #threadRailToggle:hover { color: rgba(255,255,255,0.9); background: rgba(18,20,28,0.85); }
+  #threadRailToggle svg { width: 16px; height: 16px; display: block; }
+
+  #threadRail {
+    position: fixed;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: min(300px, 78vw);
+    z-index: 12;
+    /* trapezoidal silhouette: left edge slants inward from top and bottom,
+       giving the panel a faceted, 3D-ish wedge shape instead of a flat
+       rectangle, while staying flush with the right edge of the screen */
+    clip-path: polygon(11% 0%, 100% 0%, 100% 100%, 0% 100%);
+    background:
+      linear-gradient(115deg, rgba(111,216,255,0.07), transparent 40%),
+      rgba(11, 12, 17, 0.86);
+    border-left: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: -24px 0 60px rgba(0,0,0,0.45);
+    transform: translateX(100%);
+    transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    display: flex;
+    flex-direction: column;
+  }
+  #threadRail.open { transform: translateX(0); }
+
+  #threadRailHeader {
+    flex: 0 0 auto;
+    padding: 26px 22px 16px 40px;
+    color: rgba(255,255,255,0.85);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  #threadRailHeader span { color: rgba(255,255,255,0.32); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 6px; }
+
+  #threadList {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 4px 20px 20px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  #threadList::-webkit-scrollbar { width: 6px; }
+  #threadList::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 999px; }
+
+  .threadItem {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 8px 8px 8px 12px;
+    color: rgba(255,255,255,0.68);
+    font-family: inherit;
+  }
+  .threadItem:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08); }
+  .threadItem.active {
+    background: rgba(111,216,255,0.1);
+    border-color: rgba(111,216,255,0.28);
+    color: rgba(255,255,255,0.95);
+  }
+  .threadItem .threadMain {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 2px 0;
+    cursor: pointer;
+    color: inherit;
+    font-family: inherit;
+  }
+  .threadItem .threadTitle {
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .threadItem .threadDate {
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+    margin-top: 2px;
+  }
+  .threadItem .threadTitleInput {
+    width: 100%;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(111,216,255,0.35);
+    border-radius: 6px;
+    color: rgba(255,255,255,0.95);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 3px 6px;
+  }
+
+  .threadActions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .threadItem:hover .threadActions,
+  .threadItem:focus-within .threadActions { opacity: 1; }
+  .threadActionBtn {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: rgba(255,255,255,0.45);
+    cursor: pointer;
+  }
+  .threadActionBtn:hover { color: rgba(255,255,255,0.9); background: rgba(255,255,255,0.08); }
+  .threadActionBtn.danger:hover { color: #ff6f6f; background: rgba(255,111,111,0.1); }
+  .threadActionBtn svg { width: 13px; height: 13px; }
+  #threadEmpty {
+    color: rgba(255,255,255,0.3);
+    font-size: 12.5px;
+    padding: 10px 12px;
+  }
+
+  #railScrim {
+    position: fixed;
+    inset: 0;
+    z-index: 11;
+    background: rgba(0,0,0,0);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  #railScrim.show { opacity: 1; pointer-events: auto; }
 </style>
 </head>
 <body>
@@ -162,19 +475,36 @@
 <div id="energyBar"></div>
 <div id="hint">drag to rotate &nbsp;·&nbsp; scroll to zoom &nbsp;·&nbsp; click to trigger a change &nbsp;·&nbsp; ask a question below</div>
 
-<div id="responseWrap"><div id="responseText"></div></div>
-<div id="chatStatus"></div>
+<div id="chatColumn">
+  <div id="messageList">
+    <div id="emptyState">Ask something below to get started.</div>
+  </div>
+  <div id="chatStatus"></div>
+  <div id="chatDock">
+    <form id="chatForm" autocomplete="off">
+      <input id="chatInput" type="text" placeholder="Ask something…" maxlength="4000" />
+      <button id="chatSend" type="submit" aria-label="Send">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 12L20 4L13 20L11 13L4 12Z" fill="currentColor"/></svg>
+      </button>
+      <button id="newChatBtn" type="button" aria-label="New chat" title="New chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 2.64 6.36"/><path d="M3 21v-5h5"/></svg>
+      </button>
+    </form>
+  </div>
+</div>
 
-<div id="chatDock">
-  <form id="chatForm" autocomplete="off">
-    <input id="chatInput" type="text" placeholder="Ask something…" maxlength="4000" />
-    <button id="chatSend" type="submit" aria-label="Send">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M4 12L20 4L13 20L11 13L4 12Z" fill="currentColor"/></svg>
-    </button>
-  </form>
+<button id="threadRailToggle" type="button" aria-label="Show threads">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+</button>
+<div id="railScrim"></div>
+<div id="threadRail">
+  <div id="threadRailHeader">Threads<span id="threadCount"></span></div>
+  <div id="threadList"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
 <script>
 (function () {
   // ---------- basic scene setup ----------
@@ -404,11 +734,12 @@
   const tideLocalDir = new THREE.Vector3();
   const invQuat = new THREE.Quaternion();
 
-  // ---------- chat-driven state: "thinking" (normal sim, centered) while
-  // the user is typing/waiting, "answering" (tide + sphere drifts to a
-  // small top-right "logo", center stage clears for the response text)
-  // while a reply streams in ----------
-  let chatState = 'idle'; // idle | thinking | answering
+  // ---------- chat-driven state: "idle" (normal sim, centered) before any
+  // message has been sent, "docked" (small top-left "logo", parked there
+  // for the rest of the session once chatting has started) the moment the
+  // first message goes out, "answering" (docked + tidal motion) while a
+  // reply streams in ----------
+  let chatState = 'idle'; // idle | docked | answering
   const posX = { cur: 0 }, posY = { cur: 0 };
   const posScale = { cur: 1 };
 
@@ -418,8 +749,8 @@
   }
 
   // Dock target is recomputed every frame from the camera's actual visible
-  // frustum at the sphere's depth, so "top-right corner" always means the
-  // real top-right corner of the viewport regardless of window size/aspect
+  // frustum at the sphere's depth, so "top-left corner" always means the
+  // real top-left corner of the viewport regardless of window size/aspect
   // ratio or zoom level — not a fixed world-unit guess. The inset is a
   // fixed screen-space fraction (of the *smaller* viewport dimension, so it
   // scales sensibly on both narrow and wide windows) plus the sphere's own
@@ -436,7 +767,7 @@
     const inset = Math.min(viewWidth, viewHeight) * DOCK_INSET_FRAC;
     const logoRadius = SPHERE_RADIUS * DOCK_SCALE;
     return {
-      x: Math.max(viewWidth / 2 - inset - logoRadius, logoRadius),
+      x: -Math.max(viewWidth / 2 - inset - logoRadius, logoRadius),
       y: Math.max(viewHeight / 2 - inset - logoRadius, logoRadius),
     };
   }
@@ -499,21 +830,22 @@
     sphere.rotation.y = rotY;
 
     // scale bump ties directly to energy, so it only pulses on a click
-    const answering = (chatState === 'answering');
-    const scaleTarget = answering ? DOCK_SCALE : 1;
-    const targetScale = scaleTarget + energy * 0.03 * (answering ? DOCK_SCALE : 1);
+    const docked = (chatState === 'docked' || chatState === 'answering');
+    const scaleTarget = docked ? DOCK_SCALE : 1;
+    const targetScale = scaleTarget + energy * 0.03 * (docked ? DOCK_SCALE : 1);
     posScale.cur += (targetScale - posScale.cur) * 0.06;
     sphere.scale.setScalar(posScale.cur);
 
-    // smoothly drift toward the top-right "logo" position when answering,
-    // and back to center otherwise — same easing both directions so the
-    // transition reads as one continuous, reversible motion. Target is
-    // recomputed from the live camera frustum every frame, so it always
-    // lands in the real top-right corner regardless of window size/aspect
+    // smoothly drift toward the top-left "logo" position once chatting has
+    // started, and stay parked there for the rest of the session (it only
+    // returns to center on a brand new chat) — same easing both directions
+    // so the transition reads as one continuous, reversible motion. Target
+    // is recomputed from the live camera frustum every frame, so it always
+    // lands in the real top-left corner regardless of window size/aspect
     // ratio, and re-settles correctly if the window is resized mid-dock.
     const dock = getDockTarget();
-    const targetX = answering ? dock.x : 0;
-    const targetY = answering ? dock.y : 0;
+    const targetX = docked ? dock.x : 0;
+    const targetY = docked ? dock.y : 0;
     posX.cur += (targetX - posX.cur) * 0.045;
     posY.cur += (targetY - posY.cur) * 0.045;
     sphere.position.x = posX.cur;
@@ -525,19 +857,49 @@
 
   // ---------- chat wiring ----------
   const API_BASE = window.MARLIN_API_BASE || 'http://localhost:8000';
+  const THREAD_STORAGE_KEY = 'marlin.thread_id';
 
   const chatForm = document.getElementById('chatForm');
   const chatInput = document.getElementById('chatInput');
   const chatSend = document.getElementById('chatSend');
   const chatStatus = document.getElementById('chatStatus');
-  const responseText = document.getElementById('responseText');
+  const chatColumn = document.getElementById('chatColumn');
+  const messageList = document.getElementById('messageList');
+  const emptyState = document.getElementById('emptyState');
+  const newChatBtn = document.getElementById('newChatBtn');
+  const threadRail = document.getElementById('threadRail');
+  const threadRailToggle = document.getElementById('threadRailToggle');
+  const threadList = document.getElementById('threadList');
+  const threadCount = document.getElementById('threadCount');
+  const railScrim = document.getElementById('railScrim');
 
   let threadId = null;
   let threadReady = null;
   let sending = false;
 
+  // top bar (title + new-chat) only appears once there's something to act
+  // on — an empty page doesn't need a "new chat" button yet
+
+  function loadStoredThreadId() {
+    try { return localStorage.getItem(THREAD_STORAGE_KEY); } catch { return null; }
+  }
+  function storeThreadId(id) {
+    try { localStorage.setItem(THREAD_STORAGE_KEY, id); } catch {}
+  }
+  function clearStoredThreadId() {
+    try { localStorage.removeItem(THREAD_STORAGE_KEY); } catch {}
+  }
+
   function ensureThread() {
     if (threadReady) return threadReady;
+
+    const existing = loadStoredThreadId();
+    if (existing) {
+      threadId = existing;
+      threadReady = Promise.resolve(existing);
+      return threadReady;
+    }
+
     threadReady = fetch(`${API_BASE}/conversations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -547,44 +909,147 @@
         if (!r.ok) throw new Error(`conversation create failed: ${r.status}`);
         return r.json();
       })
-      .then(data => { threadId = data.thread_id; return threadId; })
+      .then(data => {
+        threadId = data.thread_id;
+        storeThreadId(threadId);
+        return threadId;
+      })
       .catch(err => {
         threadReady = null; // allow retry on next send
         throw err;
       });
     return threadReady;
   }
-  // warm the conversation up front so the first send doesn't wait on it
+
+  // ---------- message list ----------
+  function hideEmptyState() {
+    if (emptyState.parentNode) emptyState.remove();
+  }
+
+  function scrollListToBottom() {
+    messageList.scrollTop = messageList.scrollHeight;
+  }
+
+  // marked + DOMPurify render assistant replies as markdown; user messages
+  // stay as literal plain text (no reason to parse what someone typed)
+  function renderMarkdown(bubble, rawText) {
+    const html = marked.parse(rawText, { breaks: true });
+    bubble.innerHTML = DOMPurify.sanitize(html);
+  }
+
+  // While a reply is still streaming in, the buffer can end mid-marker —
+  // e.g. "Some **bold" with the closing "**" not received yet. Parsing that
+  // as-is renders the dangling "**" as literal text instead of holding it
+  // back, so it visibly flickers as raw markdown until the next token
+  // closes it. This scans the tail for an inline marker left open (odd
+  // count) and, if found, trims back to just before it — so a token still
+  // in flight simply isn't shown yet rather than shown broken. It appears
+  // correctly formatted as soon as its closing marker arrives.
+  const INLINE_MARKERS = ['***', '**', '__', '~~', '`', '*', '_'];
+  function trimTrailingOpenMarker(text) {
+    const fenceCount = (text.match(/```/g) || []).length;
+    if (fenceCount % 2 === 1) {
+      // inside an unclosed fenced code block: leave it alone, marked
+      // already renders an open ``` block as a normal <pre> as-is
+      return text;
+    }
+
+    // only the current paragraph can have an unclosed marker — anything
+    // before the last blank line is already a settled, complete block
+    const paraStart = text.lastIndexOf('\n\n');
+    const para = paraStart === -1 ? text : text.slice(paraStart + 2);
+    const paraOffset = paraStart === -1 ? 0 : paraStart + 2;
+
+    // scan left to right, consuming the longest matching marker at each
+    // position, tracking which markers are currently "open"; whichever
+    // marker (if any) is still open when we reach the end is the dangling
+    // one, and we cut back to right before it opened
+    let i = 0;
+    const openStack = []; // {marker, at}
+    while (i < para.length) {
+      const hit = INLINE_MARKERS.find(m => para.startsWith(m, i));
+      if (hit) {
+        const top = openStack[openStack.length - 1];
+        if (top && top.marker === hit) {
+          openStack.pop(); // closes the most recent matching open marker
+        } else {
+          openStack.push({ marker: hit, at: i });
+        }
+        i += hit.length;
+      } else {
+        i += 1;
+      }
+    }
+
+    if (openStack.length === 0) return text;
+    const cutAt = paraOffset + openStack[0].at;
+    return text.slice(0, cutAt);
+  }
+
+  function addMessage(role, content) {
+    hideEmptyState();
+    newChatBtn.classList.add('show');
+    const row = document.createElement('div');
+    row.className = `msgRow ${role}`;
+    const bubble = document.createElement('div');
+    bubble.className = 'msgBubble';
+    if (role === 'assistant') {
+      bubble.classList.add('markdown');
+      bubble.dataset.raw = content;
+      renderMarkdown(bubble, content);
+    } else {
+      bubble.textContent = content;
+    }
+    row.appendChild(bubble);
+    messageList.appendChild(row);
+    scrollListToBottom();
+    return bubble;
+  }
+
+  function clearMessages() {
+    messageList.innerHTML = '';
+    messageList.appendChild(emptyState);
+    newChatBtn.classList.remove('show');
+  }
+
+  async function loadHistory(id) {
+    try {
+      const res = await fetch(`${API_BASE}/conversations/${id}/messages?limit=20`);
+      if (!res.ok) return; // e.g. 404 for a stored id the backend no longer knows
+      const data = await res.json();
+      (data.messages || []).forEach(m => {
+        if (m.role === 'user' || m.role === 'assistant') addMessage(m.role, m.content);
+      });
+      if ((data.messages || []).length > 0) setChatState('docked');
+    } catch {
+      // history is a nice-to-have; a failed fetch shouldn't block chatting
+    }
+  }
+
+  function startNewChat() {
+    clearStoredThreadId();
+    threadId = null;
+    threadReady = null;
+    clearMessages();
+    setStatus('');
+    setChatState('idle');
+    chatInput.value = '';
+    chatInput.focus();
+    highlightActiveThread();
+  }
+
+  newChatBtn.addEventListener('click', startNewChat);
+
+  // resume a stored conversation on load: warms the thread and shows recent
+  // history; a fresh visitor just gets a new thread with no history to show,
+  // and the sphere stays centered until the first message goes out
+  const storedThreadId = loadStoredThreadId();
+  if (storedThreadId) loadHistory(storedThreadId);
   ensureThread().catch(() => {});
 
   function setStatus(msg) {
     chatStatus.textContent = msg;
     chatStatus.classList.toggle('show', !!msg);
-  }
-
-  function showResponseCursor() {
-    responseText.classList.add('show');
-    responseText.innerHTML = '<span class="cursor"></span>';
-  }
-
-  function appendResponseToken(token) {
-    const cursor = responseText.querySelector('.cursor');
-    const textNode = document.createTextNode(token);
-    if (cursor) {
-      responseText.insertBefore(textNode, cursor);
-    } else {
-      responseText.appendChild(textNode);
-    }
-  }
-
-  function finishResponse() {
-    const cursor = responseText.querySelector('.cursor');
-    if (cursor) cursor.remove();
-  }
-
-  function clearResponse() {
-    responseText.classList.remove('show');
-    responseText.textContent = '';
   }
 
   async function sendMessage(message) {
@@ -593,12 +1058,14 @@
     chatSend.disabled = true;
     hint.classList.add('fade');
 
-    // "thinking": normal simulation, centered, while we wait for the
-    // request to go out and the first tokens to arrive
-    setChatState('thinking');
-    clearResponse();
+    // docks the sphere in the top-left corner (if it isn't already) and
+    // keeps it there for the rest of the session
+    setChatState('docked');
+    addMessage('user', message);
     setStatus('thinking…');
 
+    let replyBubble = null;
+    let replyRaw = '';
     try {
       const id = await ensureThread();
 
@@ -612,7 +1079,6 @@
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
-      let answering = false;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -639,30 +1105,47 @@
           if (event === 'progress') {
             setStatus(typeof payload.content === 'string' ? payload.content : 'working…');
           } else if (event === 'token') {
-            if (!answering) {
-              // first token: sphere drifts to the top-right and switches
-              // to its tidal motion, center stage opens up for the reply
-              answering = true;
+            if (!replyBubble) {
+              // first token: sphere switches to its tidal motion while the
+              // reply streams in, still parked in its corner
               setChatState('answering');
               setStatus('');
-              showResponseCursor();
+              replyBubble = addMessage('assistant', '');
             }
-            appendResponseToken(payload.content || '');
+            replyRaw += payload.content || '';
+            // re-parse the accumulated markdown on every token rather than
+            // patching the DOM incrementally — cheap at this text volume,
+            // and avoids ending up with a half-open **bold** or list mid-stream.
+            // Trim back any marker left dangling open by this token, so it
+            // shows once complete instead of flickering as literal "**"/"`"
+            // while its closing half is still in flight.
+            renderMarkdown(replyBubble, trimTrailingOpenMarker(replyRaw));
+            replyBubble.dataset.raw = replyRaw;
+            replyBubble.insertAdjacentHTML('beforeend', '<span class="cursor"></span>');
+            scrollListToBottom();
           } else if (event === 'done') {
-            finishResponse();
+            // final render uses the complete, untrimmed text — anything
+            // held back mid-stream (a marker that only just closed) shows now
+            if (replyBubble) {
+              renderMarkdown(replyBubble, replyRaw);
+              replyBubble.dataset.raw = replyRaw;
+            }
             setStatus('');
+            setChatState('docked');
           } else if (event === 'error') {
-            finishResponse();
-            appendResponseToken(`\n\n[error: ${payload.detail || 'something went wrong'}]`);
+            if (!replyBubble) replyBubble = addMessage('assistant', '');
+            replyRaw += `\n\n_[error: ${payload.detail || 'something went wrong'}]_`;
+            renderMarkdown(replyBubble, replyRaw);
+            replyBubble.dataset.raw = replyRaw;
             setStatus('');
+            setChatState('docked');
           }
         }
       }
     } catch (err) {
       setStatus('');
-      responseText.classList.add('show');
-      responseText.textContent = `Couldn't reach the assistant (${err.message}). Is the backend running?`;
-      setChatState('answering');
+      addMessage('assistant', `Couldn't reach the assistant (${err.message}). Is the backend running?`);
+      setChatState('docked');
     } finally {
       sending = false;
       chatSend.disabled = false;
@@ -674,15 +1157,206 @@
     const message = chatInput.value;
     if (!message.trim() || sending) return;
     chatInput.value = '';
-    // returning to the input to type again feels like "asking a new
-    // question" — bring the sphere back to center and normal motion
-    setChatState('thinking');
     sendMessage(message);
   });
 
-  chatInput.addEventListener('focus', () => {
-    if (chatState === 'answering') setChatState('thinking');
+  // ---------- thread rail: angled panel listing recent conversations ----------
+  function highlightActiveThread() {
+    threadList.querySelectorAll('.threadItem').forEach(el => {
+      el.classList.toggle('active', el.dataset.threadId === threadId);
+    });
+  }
+
+  function formatThreadDate(iso) {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+        ' · ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    } catch { return ''; }
+  }
+
+  async function loadThreadList() {
+    try {
+      const res = await fetch(`${API_BASE}/conversations?limit=30`);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const data = await res.json();
+      const conversations = data.conversations || [];
+      threadCount.textContent = conversations.length ? `(${conversations.length})` : '';
+      threadList.innerHTML = '';
+
+      if (conversations.length === 0) {
+        const empty = document.createElement('div');
+        empty.id = 'threadEmpty';
+        empty.textContent = 'No conversations yet.';
+        threadList.appendChild(empty);
+        return;
+      }
+
+      conversations.forEach(conv => threadList.appendChild(renderThreadItem(conv)));
+      highlightActiveThread();
+    } catch {
+      threadList.innerHTML = '';
+      const empty = document.createElement('div');
+      empty.id = 'threadEmpty';
+      empty.textContent = "Couldn't load threads.";
+      threadList.appendChild(empty);
+    }
+  }
+
+  function threadDisplayTitle(conv) {
+    return conv.title && conv.title.trim() ? conv.title : `Thread ${conv.thread_id.slice(0, 8)}`;
+  }
+
+  function renderThreadItem(conv) {
+    const item = document.createElement('div');
+    item.className = 'threadItem';
+    item.dataset.threadId = conv.thread_id;
+
+    const main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'threadMain';
+    const title = document.createElement('div');
+    title.className = 'threadTitle';
+    title.textContent = threadDisplayTitle(conv);
+    const date = document.createElement('div');
+    date.className = 'threadDate';
+    date.textContent = formatThreadDate(conv.created_at);
+    main.appendChild(title);
+    main.appendChild(date);
+    main.addEventListener('click', () => switchThread(conv.thread_id));
+
+    const actions = document.createElement('div');
+    actions.className = 'threadActions';
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'threadActionBtn';
+    editBtn.setAttribute('aria-label', 'Rename thread');
+    editBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
+    editBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      startEditingThreadTitle(item, conv);
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'threadActionBtn danger';
+    deleteBtn.setAttribute('aria-label', 'Delete thread');
+    deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>';
+    deleteBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      deleteThread(conv.thread_id);
+    });
+
+    actions.appendChild(editBtn);
+    actions.appendChild(deleteBtn);
+    item.appendChild(main);
+    item.appendChild(actions);
+    return item;
+  }
+
+  function startEditingThreadTitle(item, conv) {
+    const main = item.querySelector('.threadMain');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'threadTitleInput';
+    input.maxLength = 200;
+    input.value = conv.title && conv.title.trim() ? conv.title : '';
+    input.placeholder = threadDisplayTitle(conv);
+
+    main.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let settled = false;
+    const commit = async () => {
+      if (settled) return;
+      settled = true;
+      const newTitle = input.value.trim();
+      input.replaceWith(main);
+      if (newTitle === (conv.title || '')) return; // unchanged, nothing to save
+      try {
+        const res = await fetch(`${API_BASE}/conversations/${conv.thread_id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newTitle }),
+        });
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        conv.title = newTitle;
+        main.querySelector('.threadTitle').textContent = threadDisplayTitle(conv);
+      } catch {
+        // rename failed silently reverts to the last known title — the
+        // thread rail is a convenience view, not worth an error dialog for
+      }
+    };
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      input.replaceWith(main);
+    };
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+    input.addEventListener('blur', commit);
+  }
+
+  async function deleteThread(id) {
+    const item = threadList.querySelector(`.threadItem[data-thread-id="${id}"]`);
+    const label = item ? item.querySelector('.threadTitle').textContent : 'this thread';
+    if (!window.confirm(`Delete "${label}"? This can't be undone.`)) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/conversations/${id}`, { method: 'DELETE' });
+      if (!res.ok && res.status !== 404) throw new Error(`status ${res.status}`);
+      if (item) item.remove();
+
+      const remaining = threadList.querySelectorAll('.threadItem').length;
+      threadCount.textContent = remaining ? `(${remaining})` : '';
+      if (remaining === 0) {
+        const empty = document.createElement('div');
+        empty.id = 'threadEmpty';
+        empty.textContent = 'No conversations yet.';
+        threadList.appendChild(empty);
+      }
+
+      // deleting the thread currently open in the transcript: start fresh
+      if (id === threadId) startNewChat();
+    } catch {
+      window.alert("Couldn't delete that thread. Please try again.");
+    }
+  }
+
+  function switchThread(id) {
+    if (id === threadId) { closeRail(); return; }
+    threadId = id;
+    threadReady = Promise.resolve(id);
+    storeThreadId(id);
+    clearMessages();
+    setStatus('');
+    setChatState('idle');
+    loadHistory(id);
+    closeRail();
+  }
+
+  function openRail() {
+    threadRail.classList.add('open');
+    railScrim.classList.add('show');
+    chatColumn.classList.add('railOpen');
+    loadThreadList();
+  }
+  function closeRail() {
+    threadRail.classList.remove('open');
+    railScrim.classList.remove('show');
+    chatColumn.classList.remove('railOpen');
+  }
+
+  threadRailToggle.addEventListener('click', () => {
+    if (threadRail.classList.contains('open')) closeRail();
+    else openRail();
   });
+  railScrim.addEventListener('click', closeRail);
 })();
 </script>
 </body>

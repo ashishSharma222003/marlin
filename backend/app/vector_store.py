@@ -29,10 +29,13 @@ async def index_for_recall(text: str, conversation_id: str) -> None:
     await store.aadd_texts([text], metadatas=[{"conversation_id": conversation_id}])
 
 
-async def search_memory(query: str, top_k: int = 5) -> list[str]:
-    """Return the `top_k` most semantically similar stored texts."""
+async def search_memory(query: str, conversation_id: str, top_k: int = 5) -> list[str]:
+    """Return the `top_k` most semantically similar stored texts previously
+    indexed for `conversation_id`."""
     store = _get_store()
     if store.index.ntotal == 0:
         return []
-    docs = await store.asimilarity_search(query, k=top_k)
+    docs = await store.asimilarity_search(
+        query, k=top_k, filter={"conversation_id": conversation_id}
+    )
     return [doc.page_content for doc in docs]
